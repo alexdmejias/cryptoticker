@@ -170,12 +170,20 @@ const currencyMap = {
   'ZWD': 'Z$'
 }
 
+const dataSourcesMap = {
+    'cryptocompare': 'https://api.coinbase.com/v2/prices/${element}-${stringCurrency}/spot',
+    'coinbase': 'https://api.coinbase.com/v2/prices/${element}-${stringCurrency}/spot'
+}
+
+function getDataSourceUrl(source: string, element: string, stringCurrency: string): string {
+    return dataSourcesMap[source].replace('${element}', element).replace('${stringCurrency}', stringCurrency);
+}
 
 let items: Map<string, vscode.StatusBarItem>
 export function activate(context: vscode.ExtensionContext) {
     items = new Map<string, vscode.StatusBarItem>();
 
-    refresh()  
+    refresh()
     setInterval(refresh, 60*1e3)
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(refresh))
 }
@@ -188,8 +196,9 @@ function refresh(): void {
     const config = vscode.workspace.getConfiguration()
     const configuredSymbols = config.get('cryptoticker.cryptoSymbols', ['BTC','ETH'])
         .map(symbol => symbol.toUpperCase())
-    //pick only the top currency    
+    //pick only the top currency
     const stringCurrency = config.get('cryptoticker.cryptoCurrency', 'USD')
+    const dataSource = config.get('cryptoticker.dataSource', 'coinbase')
     const symbolCurrency = currencyMap[stringCurrency]
     if (!symbolCurrency ) {
         console.log('Currency not found')
@@ -199,7 +208,7 @@ function refresh(): void {
         fillEmpty(configuredSymbols, stringCurrency, symbolCurrency)
     }
 
-    refreshSymbols(configuredSymbols, stringCurrency, symbolCurrency)
+    refreshSymbols(configuredSymbols, stringCurrency, symbolCurrency, dataSource);
 }
 
 function fillEmpty(symbols: string[], stringCurrency: string, symbolCurrency:string): void {
@@ -223,26 +232,27 @@ function cleanup(): void {
     items = new Map<string, vscode.StatusBarItem>()
 }
 
-function refreshSymbols(symbols: string[], stringCurrency: string,  symbolCurrency: string): void {
+function refreshSymbols(symbols: string[], stringCurrency: string,  symbolCurrency: string, dataSource: string): void {
     symbols.forEach(function(element) {
-    const url = `https://min-api.cryptocompare.com/data/price?fsym=${element}&tsyms=${stringCurrency}`
-    
-    httpGet(url).then(response => {
-        // Remove prepended newline+comment
-        //response = response.substr(3)
-        const responseObj = JSON.parse(response)
-        responseObj[stringCurrency]
-        updateItemWithSymbolResult(element, responseObj, stringCurrency,symbolCurrency)
-    }).catch(e => console.error(e))
+        const url = getDataSourceUrl(dataSource, element, stringCurrency);
+
+        httpGet(url).then(response => {
+            // Remove prepended newline+comment
+            //response = response.substr(3)
+            const responseObj = JSON.parse(response)
+            responseObj[stringCurrency]
+            updateItemWithSymbolResult(element, responseObj, stringCurrency,symbolCurrency)
+        }).catch(e => console.error(e))
     })
 }
 
 function updateItemWithSymbolResult(element, symbolResult, stringCurrency, symbolCurrency) {
     const symbol = element
     const item = items.get(symbol)
-    const price: number = symbolResult[stringCurrency]
+    // const price: number = symbolResult[stringCurrency]
+    const price: number = symbolResult['data']['amount'];
 
-    item.text = `${symbol.toUpperCase()} ${symbolCurrency}${price}`   
+    item.text = `${symbol.toUpperCase()} ${symbolCurrency}${price}`
 }
 
 function httpGet(url): Promise<string> {
